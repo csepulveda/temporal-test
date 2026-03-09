@@ -1,0 +1,108 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: temporal-server
+  namespace: temporal-poc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: temporal-server
+  template:
+    metadata:
+      labels:
+        app: temporal-server
+    spec:
+      initContainers:
+      - name: wait-postgres
+        image: postgres:16-alpine
+        command:
+        - sh
+        - -c
+        - |
+          until pg_isready -h postgres-rw -p 5432 -U temporal; do
+            echo "Waiting for postgres..."
+            sleep 2
+          done
+          echo "Postgres is ready"
+      containers:
+      - name: temporal
+        image: temporalio/auto-setup:1.25.2
+        env:
+        - name: DB
+          value: postgres12
+        - name: DB_PORT
+          value: "5432"
+        - name: POSTGRES_USER
+          value: temporal
+        - name: POSTGRES_PWD
+          value: temporal123
+        - name: POSTGRES_SEEDS
+          value: postgres-rw
+        - name: DBNAME
+          value: temporal
+        - name: VISIBILITY_DBNAME
+          value: temporal_visibility
+        ports:
+        - containerPort: 7233
+          name: grpc
+        resources:
+          requests:
+            cpu: 500m
+            memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: temporal-frontend
+  namespace: temporal-poc
+spec:
+  selector:
+    app: temporal-server
+  ports:
+  - port: 7233
+    targetPort: 7233
+    name: grpc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: temporal-ui
+  namespace: temporal-poc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: temporal-ui
+  template:
+    metadata:
+      labels:
+        app: temporal-ui
+    spec:
+      enableServiceLinks: false
+      containers:
+      - name: ui
+        image: temporalio/ui:2.31.2
+        env:
+        - name: TEMPORAL_ADDRESS
+          value: "temporal-frontend:7233"
+        - name: TEMPORAL_CORS_ORIGINS
+          value: "http://localhost:3000"
+        ports:
+        - containerPort: 8080
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: temporal-ui
+  namespace: temporal-poc
+spec:
+  selector:
+    app: temporal-ui
+  ports:
+  - port: 8080
+    targetPort: 8080

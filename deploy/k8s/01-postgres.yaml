@@ -1,0 +1,29 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: postgres
+  namespace: temporal-poc
+spec:
+  instances: 1
+  storage:
+    storageClass: local-path
+    size: 2Gi
+  bootstrap:
+    initdb:
+      database: conciliation
+      owner: temporal
+      postInitSQL:
+        - CREATE DATABASE temporal;
+        - CREATE DATABASE temporal_visibility;
+      secret:
+        name: postgres-credentials
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-credentials
+  namespace: temporal-poc
+type: kubernetes.io/basic-auth
+stringData:
+  username: temporal
+  password: temporal123

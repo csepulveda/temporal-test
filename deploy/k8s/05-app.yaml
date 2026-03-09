@@ -1,0 +1,118 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: task-server
+  namespace: temporal-poc
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: task-server-job-manager
+  namespace: temporal-poc
+rules:
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["create", "get", "list", "watch", "delete"]
+- apiGroups: [""]
+  resources: ["pods", "pods/log"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: task-server-job-manager
+  namespace: temporal-poc
+subjects:
+- kind: ServiceAccount
+  name: task-server
+roleRef:
+  kind: Role
+  name: task-server-job-manager
+  apiGroup: rbac.authorization.k8s.io
+---
+# Temporal Worker (orchestration)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: task-worker
+  namespace: temporal-poc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: task-worker
+  template:
+    metadata:
+      labels:
+        app: task-worker
+    spec:
+      serviceAccountName: task-server
+      containers:
+      - name: worker
+        image: registry.csepulveda.net/temporal-poc/worker:latest
+        env:
+        - name: TEMPORAL_HOST
+          value: "temporal-frontend:7233"
+        - name: DATABASE_URL
+          value: "postgres://temporal:temporal123@postgres-rw:5432/conciliation?sslmode=disable"
+        - name: CONCILIATION_WORKER_IMAGE
+          value: "registry.csepulveda.net/temporal-poc/conciliation-worker:latest"
+        - name: JOB_NAMESPACE
+          value: "temporal-poc"
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+---
+# Trigger (SQS listener + API + Schedules)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: task-trigger
+  namespace: temporal-poc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: task-trigger
+  template:
+    metadata:
+      labels:
+        app: task-trigger
+    spec:
+      containers:
+      - name: trigger
+        image: registry.csepulveda.net/temporal-poc/trigger:latest
+        env:
+        - name: TEMPORAL_HOST
+          value: "temporal-frontend:7233"
+        - name: CONCILIATION_QUEUE_URL
+          value: "http://localstack:4566/000000000000/conciliation-queue"
+        - name: AWS_ENDPOINT_URL
+          value: "http://localstack:4566"
+        - name: AWS_ACCESS_KEY_ID
+          value: "test"
+        - name: AWS_SECRET_ACCESS_KEY
+          value: "test"
+        - name: AWS_DEFAULT_REGION
+          value: "us-east-1"
+        - name: DATABASE_URL
+          value: "postgres://temporal:temporal123@postgres-rw:5432/conciliation?sslmode=disable"
+        ports:
+        - containerPort: 8080
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: task-trigger
+  namespace: temporal-poc
+spec:
+  selector:
+    app: task-trigger
+  ports:
+  - port: 8080
+    targetPort: 8080

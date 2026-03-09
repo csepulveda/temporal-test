@@ -1,0 +1,103 @@
+# --- Trigger: escucha SQS + API + Schedules ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: task-trigger
+  labels:
+    app: task-trigger
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: task-trigger
+  template:
+    metadata:
+      labels:
+        app: task-trigger
+    spec:
+      serviceAccountName: task-server  # necesita permisos para crear Jobs
+      containers:
+      - name: trigger
+        image: your-registry/task-trigger:latest
+        env:
+        - name: CONCILIATION_QUEUE_URL
+          value: "https://sqs.us-east-1.amazonaws.com/123456789/conciliation-queue"
+        - name: PAYMENTS_QUEUE_URL
+          value: "https://sqs.us-east-1.amazonaws.com/123456789/payments-queue"
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+        ports:
+        - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: task-trigger
+spec:
+  selector:
+    app: task-trigger
+  ports:
+  - port: 8080
+    targetPort: 8080
+
+---
+# --- Worker: ejecuta workflows y activities ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: task-worker
+  labels:
+    app: task-worker
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: task-worker
+  template:
+    metadata:
+      labels:
+        app: task-worker
+    spec:
+      serviceAccountName: task-server
+      containers:
+      - name: worker
+        image: your-registry/task-worker:latest
+        resources:
+          requests:
+            cpu: 250m
+            memory: 256Mi
+
+---
+# --- RBAC: permisos para crear Jobs ---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: task-server
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: task-server-job-manager
+rules:
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["create", "get", "list", "watch", "delete"]
+- apiGroups: [""]
+  resources: ["pods", "pods/log"]
+  verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: task-server-job-manager
+subjects:
+- kind: ServiceAccount
+  name: task-server
+roleRef:
+  kind: Role
+  name: task-server-job-manager
+  apiGroup: rbac.authorization.k8s.io

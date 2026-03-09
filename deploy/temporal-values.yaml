@@ -1,0 +1,41 @@
+# Helm values para desplegar Temporal en EKS
+# helm repo add temporal https://temporalio.github.io/helm-charts
+# helm install temporal temporal/temporal -f deploy/temporal-values.yaml -n temporal
+
+server:
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+
+frontend:
+  replicaCount: 2
+
+history:
+  replicaCount: 2
+
+matching:
+  replicaCount: 2
+
+worker:
+  replicaCount: 1
+
+# Usar PostgreSQL existente o instalar uno
+postgresql:
+  enabled: true
+
+# Web UI para visualizar workflows
+web:
+  enabled: true
+  replicaCount: 1
+  service:
+    type: ClusterIP
+    port: 8080
+
+# Elasticsearch para búsqueda avanzada (opcional)
+elasticsearch:
+  enabled: false
+
+prometheus:
+  enabled: true

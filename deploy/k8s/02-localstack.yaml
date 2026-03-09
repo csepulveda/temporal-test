@@ -1,0 +1,93 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: localstack
+  namespace: temporal-poc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: localstack
+  template:
+    metadata:
+      labels:
+        app: localstack
+    spec:
+      containers:
+      - name: localstack
+        image: localstack/localstack:4
+        env:
+        - name: SERVICES
+          value: "sqs,sns"
+        - name: DEFAULT_REGION
+          value: "us-east-1"
+        ports:
+        - containerPort: 4566
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: localstack
+  namespace: temporal-poc
+spec:
+  selector:
+    app: localstack
+  ports:
+  - port: 4566
+    targetPort: 4566
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: setup-aws-resources
+  namespace: temporal-poc
+spec:
+  backoffLimit: 10
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: aws-cli
+        image: amazon/aws-cli:2.22.35
+        env:
+        - name: AWS_ACCESS_KEY_ID
+          value: "test"
+        - name: AWS_SECRET_ACCESS_KEY
+          value: "test"
+        - name: AWS_DEFAULT_REGION
+          value: "us-east-1"
+        - name: ENDPOINT
+          value: "http://localstack:4566"
+        command:
+        - /bin/sh
+        - -c
+        - |
+          echo "Waiting for LocalStack..."
+          until aws --endpoint-url=$ENDPOINT sqs list-queues 2>/dev/null; do
+            sleep 2
+          done
+
+          echo "Creating SQS queue..."
+          aws --endpoint-url=$ENDPOINT sqs create-queue --queue-name conciliation-queue
+          SQS_ARN=$(aws --endpoint-url=$ENDPOINT sqs get-queue-attributes \
+            --queue-url $ENDPOINT/000000000000/conciliation-queue \
+            --attribute-names QueueArn --query 'Attributes.QueueArn' --output text)
+
+          echo "Creating SNS topic..."
+          aws --endpoint-url=$ENDPOINT sns create-topic --name conciliation-topic
+          SNS_ARN="arn:aws:sns:us-east-1:000000000000:conciliation-topic"
+
+          echo "Subscribing SQS to SNS..."
+          aws --endpoint-url=$ENDPOINT sns subscribe \
+            --topic-arn $SNS_ARN \
+            --protocol sqs \
+            --notification-endpoint $SQS_ARN
+
+          echo "=== Setup complete ==="
+          echo "SNS Topic: $SNS_ARN"
+          echo "SQS Queue: $SQS_ARN"
+          aws --endpoint-url=$ENDPOINT sns list-subscriptions
