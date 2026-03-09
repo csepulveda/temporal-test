@@ -200,8 +200,7 @@ function renderPartners() {
     return;
   }
   grid.innerHTML = partners.map(p => {
-    const totalTxns = p.pending_txns + p.processed_txns + p.skipped_txns;
-    const processedPct = totalTxns > 0 ? ((p.processed_txns + p.skipped_txns) / totalTxns * 100) : 0;
+    const paidPct = p.total_loan_amount > 0 ? (p.collected_amount / p.total_loan_amount * 100) : 0;
     const selected = currentPartner === p.id ? ' selected' : '';
     return '<div class="partner-card' + selected + '" onclick="selectPartner(' + p.id + ')">' +
       '<div class="name">' + p.name + '<span class="tier-badge ' + tierClass(p.tier) + '">' + p.tier + '</span></div>' +
@@ -215,7 +214,8 @@ function renderPartners() {
         '<div class="stat"><span class="label">Collections</span><span class="value">' + fmtInt(p.total_collections) + '</span></div>' +
         '<div class="stat"><span class="label">Collected</span><span class="value amount">$' + fmt(p.collected_amount) + '</span></div>' +
       '</div>' +
-      '<div class="progress-bar"><div class="fill fill-green" style="width:' + processedPct.toFixed(1) + '%"></div></div>' +
+      '<div class="progress-bar"><div class="fill fill-green" style="width:' + paidPct.toFixed(1) + '%"></div></div>' +
+      '<div style="font-size:0.7rem;color:#64748b;margin-top:4px">Loans: $' + fmt(p.collected_amount) + ' / $' + fmt(p.total_loan_amount) + ' (' + paidPct.toFixed(1) + '%)</div>' +
     '</div>';
   }).join('');
 }

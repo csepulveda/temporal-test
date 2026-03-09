@@ -23,8 +23,9 @@ type PartnerSummary struct {
 	PendingTxns      int    `json:"pending_txns"`
 	ProcessedTxns    int    `json:"processed_txns"`
 	SkippedTxns      int    `json:"skipped_txns"`
-	TotalCollections int    `json:"total_collections"`
+	TotalCollections int     `json:"total_collections"`
 	CollectedAmount  float64 `json:"collected_amount"`
+	TotalLoanAmount  float64 `json:"total_loan_amount"`
 }
 
 type MerchantDetail struct {
@@ -94,7 +95,8 @@ func handlePartners(w http.ResponseWriter, r *http.Request) {
 			COALESCE(SUM(CASE WHEN t.status = 'processed' THEN 1 ELSE 0 END), 0) AS processed_txns,
 			COALESCE(SUM(CASE WHEN t.status = 'skipped' THEN 1 ELSE 0 END), 0) AS skipped_txns,
 			(SELECT COUNT(*) FROM collections c JOIN loans ll ON c.loan_id = ll.id JOIN merchants mm ON ll.merchant_id = mm.id WHERE mm.partner_id = p.id) AS total_collections,
-			(SELECT COALESCE(SUM(c.amount), 0) FROM collections c JOIN loans ll ON c.loan_id = ll.id JOIN merchants mm ON ll.merchant_id = mm.id WHERE mm.partner_id = p.id) AS collected_amount
+			(SELECT COALESCE(SUM(c.amount), 0) FROM collections c JOIN loans ll ON c.loan_id = ll.id JOIN merchants mm ON ll.merchant_id = mm.id WHERE mm.partner_id = p.id) AS collected_amount,
+			(SELECT COALESCE(SUM(ll.original_amount), 0) FROM loans ll JOIN merchants mm ON ll.merchant_id = mm.id WHERE mm.partner_id = p.id) AS total_loan_amount
 		FROM partners p
 		LEFT JOIN merchants m ON m.partner_id = p.id
 		LEFT JOIN transactions t ON t.merchant_id = m.id
@@ -114,7 +116,7 @@ func handlePartners(w http.ResponseWriter, r *http.Request) {
 		if err := rows.Scan(&p.ID, &p.Name, &p.Code, &p.Tier,
 			&p.MerchantCount, &p.ActiveLoans, &p.PaidLoans,
 			&p.PendingTxns, &p.ProcessedTxns, &p.SkippedTxns,
-			&p.TotalCollections, &p.CollectedAmount); err != nil {
+			&p.TotalCollections, &p.CollectedAmount, &p.TotalLoanAmount); err != nil {
 			jsonError(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
